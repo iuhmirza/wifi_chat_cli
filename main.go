@@ -30,21 +30,32 @@ func main() {
 		return
 	}
 
+	stopReceiving := make(chan struct{})
 	go func() {
 		var msg textMessage
 		for {
-			err := wsjson.Read(context.TODO(), wsConn, &msg)
-			if err != nil {
-				log.Println(err)
+			select {
+			case <-stopReceiving:
 				return
+			default:
+				err := wsjson.Read(context.TODO(), wsConn, &msg)
+				if err != nil {
+					log.Println(err)
+					return
+				}
+				fmt.Println(msg.Username, msg.Content)
 			}
-			fmt.Println(msg.Username, msg.Content)
 		}
 	}()
 
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
 		line := scanner.Text()
+		if line == "exit" {
+			close(stopReceiving)
+			wsConn.Close(websocket.StatusNormalClosure, "Disconnecting")
+			return
+		}
 		err := wsjson.Write(ctx, wsConn, &textMessage{Username: username, Content: line})
 		if err != nil {
 			fmt.Println(err)
